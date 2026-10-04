@@ -232,6 +232,9 @@ typedef struct _DECODE_UNIT {
 #define VIDEO_FORMAT_AV1_MAIN10      0x2000 // AV1 Main 10-bit profile
 #define VIDEO_FORMAT_AV1_HIGH8_444   0x4000 // AV1 High 4:4:4 8-bit profile
 #define VIDEO_FORMAT_AV1_HIGH10_444  0x8000 // AV1 High 4:4:4 10-bit profile
+#define VIDEO_FORMAT_PYROWAVE        0x10000 // Apollo experimental, client-local format
+#define VIDEO_FORMAT_PYROWAVE_REQUIRED 0x20000 // Fail instead of selecting a conventional codec
+#define ML_ERROR_PYROWAVE_REQUIRED   -16000 // Selected Pyrowave was absent from RTSP DESCRIBE
 
 // Masks for clients to use to match video codecs without profile-specific details.
 #define VIDEO_FORMAT_MASK_H264   0x000F

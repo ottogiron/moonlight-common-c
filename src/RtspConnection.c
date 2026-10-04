@@ -7,6 +7,26 @@
 #define MAX_RTSP_RESPONSE_SIZE (1024 * 1024)
 
 static int currentSeqNumber;
+// Only an exact version and source pin in DESCRIBE may select the experimental codec.
+static bool hasExactPyrowaveAttribute(const char* sdp, const char* name, const char* value) {
+    size_t nameLen = strlen(name), valueLen = strlen(value);
+    int matches = 0;
+    for (const char* line = sdp; *line; ) {
+        const char* end = strchr(line, '\n');
+        if (!end) end = line + strlen(line);
+        const char* trimmed = end;
+        while (trimmed > line && (trimmed[-1] == '\r' || trimmed[-1] == ' ')) trimmed--;
+        if ((size_t)(trimmed - line) >= nameLen + 3 &&
+            line[0] == 'a' && line[1] == '=' &&
+            !memcmp(line + 2, name, nameLen) && line[2 + nameLen] == ':') {
+            if ((size_t)(trimmed - (line + 3 + nameLen)) != valueLen ||
+                memcmp(line + 3 + nameLen, value, valueLen)) return false;
+            matches++;
+        }
+        line = *end ? end + 1 : end;
+    }
+    return matches == 1;
+}
 static char rtspTargetUrl[256];
 static char* sessionIdString;
 static bool hasSessionId;
@@ -1087,7 +1107,23 @@ int performRtspHandshake(PSERVER_INFORMATION serverInfo) {
             goto Exit;
         }
 
-        if ((StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_AV1) && strstr(response.payload, "AV1/90000")) {
+        if (IS_SUNSHINE() && AppVersionQuad[0] >= 7 &&
+            (StreamConfig.supportedVideoFormats & VIDEO_FORMAT_PYROWAVE) &&
+            hasExactPyrowaveAttribute(response.payload, "x-apollo-pyrowave-version", "2") &&
+            hasExactPyrowaveAttribute(response.payload, "x-apollo-pyrowave-pin", "5e4a98f807dddd2498824e3b55ef2fe1845bcc59")) {
+            NegotiatedVideoFormat = VIDEO_FORMAT_PYROWAVE;
+            StreamConfig.colorSpace = COLORSPACE_REC_709;
+            StreamConfig.colorRange = COLOR_RANGE_FULL;
+            // The SDP video packet size loses 16 bytes under video encryption.
+            if (StreamConfig.packetSize == 1024) StreamConfig.packetSize = 1040;
+        }
+        else if (StreamConfig.supportedVideoFormats & VIDEO_FORMAT_PYROWAVE_REQUIRED) {
+            Limelog("Selected Pyrowave bitrate requires matching RTSP capability; refusing codec fallback\n");
+            freeMessage(&response);
+            ret = ML_ERROR_PYROWAVE_REQUIRED;
+            goto Exit;
+        }
+        else if ((StreamConfig.supportedVideoFormats & VIDEO_FORMAT_MASK_AV1) && strstr(response.payload, "AV1/90000")) {
             if ((serverInfo->serverCodecModeSupport & SCM_AV1_HIGH10_444) && (StreamConfig.supportedVideoFormats & VIDEO_FORMAT_AV1_HIGH10_444)) {
                 NegotiatedVideoFormat = VIDEO_FORMAT_AV1_HIGH10_444;
             }

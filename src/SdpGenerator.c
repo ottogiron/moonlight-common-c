@@ -349,10 +349,14 @@ static PSDP_OPTION getAttributesList(char*urlSafeAddr) {
         }
     }
 
-    // GFE currently imposes a limit of 100 Mbps for the video bitrate. It will automatically
-    // impose that on maximumBitrateKbps but not on initialBitrateKbps. We will impose the cap
-    // ourselves so initialBitrateKbps does not exceed maximumBitrateKbps.
-    adjustedBitrate = adjustedBitrate > 100000 ? 100000 : adjustedBitrate;
+    // GFE currently imposes a limit of 100 Mbps for the video bitrate. Keep
+    // the historical cap, including Pyrowave's no-override/150 Mbps path.
+    // Higher explicitly selected Pyrowave rates need the matching RTSP request.
+    if (NegotiatedVideoFormat != VIDEO_FORMAT_PYROWAVE ||
+        !(StreamConfig.supportedVideoFormats & VIDEO_FORMAT_PYROWAVE_REQUIRED) ||
+        StreamConfig.bitrate <= 150000) {
+        adjustedBitrate = adjustedBitrate > 100000 ? 100000 : adjustedBitrate;
+    }
 
     // We don't support dynamic bitrate scaling properly (it tends to bounce between min and max and never
     // settle on the optimal bitrate if it's somewhere in the middle), so we'll just latch the bitrate
@@ -431,7 +435,13 @@ static PSDP_OPTION getAttributesList(char*urlSafeAddr) {
         snprintf(payloadStr, sizeof(payloadStr), "%d", slicesPerFrame);
         err |= addAttributeString(&optionHead, "x-nv-video[0].videoEncoderSlicesPerFrame", payloadStr);
 
-        if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_AV1) {
+        if (NegotiatedVideoFormat == VIDEO_FORMAT_PYROWAVE) {
+            err |= addAttributeString(&optionHead, "x-nv-vqos[0].bitStreamFormat", "3");
+            err |= addAttributeString(&optionHead, "x-apollo-pyrowave-version", "2");
+            err |= addAttributeString(&optionHead, "x-apollo-pyrowave-pin", "5e4a98f807dddd2498824e3b55ef2fe1845bcc59");
+            err |= addAttributeString(&optionHead, "x-ss-video[0].intraRefresh", "0");
+        }
+        else if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_AV1) {
             err |= addAttributeString(&optionHead, "x-nv-vqos[0].bitStreamFormat", "2");
         }
         else if (NegotiatedVideoFormat & VIDEO_FORMAT_MASK_H265) {
